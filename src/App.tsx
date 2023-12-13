@@ -391,15 +391,28 @@ function useLocalStorage(
   const [state, setState] = useState(localStorage.getItem(key) ?? initial);
 
   useEffect(() => {
+    if (localStorage.getItem(key) === null && state === initial) {
+      return;
+    }
     localStorage.setItem(key, state);
   }, [state, key]);
 
   return [state, setState];
 }
 
-function App() {
+function ChooseStorage() {
+  const [storageKey, setStorageKey] = useState("");
+  return (
+    <>
+      <input value={storageKey} onChange={e => setStorageKey(e.target.value)} />
+      <App key={storageKey} storageKey={storageKey} />
+    </>
+  );
+}
+
+function App({ storageKey }: { storageKey: string }) {
   const [sourceText, setSourceText] = useLocalStorage(
-    "the_expand_story",
+    "story_rules_" + storageKey,
     ["root ?char_A", "Greetings from +char_@c I am @c"].join("\n\n"),
   );
 
@@ -427,4 +440,4 @@ function App() {
   );
 }
 
-export default App;
+export default ChooseStorage;
