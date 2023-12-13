@@ -1,6 +1,4 @@
 import { memo, useState } from "react";
-import reactLogo from "./assets/react.svg";
-import viteLogo from "/vite.svg";
 import "./App.css";
 
 type GenerationState = {
@@ -79,6 +77,41 @@ const STORIES_TEXT = [
 
 const STORIES = STORIES_TEXT.map(parseStory);
 
+function collectStateInto(
+  stories: readonly Story[],
+  state: GenerationState,
+  target: Map<string, string>,
+): boolean {
+  let ok = true;
+  const story = stories[state.story];
+  for (let i = 0; i < story.length; i++) {
+    const word = story[i];
+    if (word.kind === "set") {
+      if (target.has(word.key) && target.get(word.key) !== word.value) {
+        ok = false;
+      } else {
+        target.set(word.key, word.value);
+      }
+    }
+  }
+  for (const child of state.provide.values()) {
+    const childOk = collectStateInto(stories, child, target);
+    if (!childOk) {
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+function collectState(
+  stories: readonly Story[],
+  state: GenerationState,
+): [Map<string, string>, "okay" | "inconsistent"] {
+  const target = new Map<string, string>();
+  const ok = collectStateInto(stories, state, target);
+  return [target, ok ? "okay" : "inconsistent"];
+}
+
 function PresentWord({ word }: { word: Word }) {
   if (word.kind === "set") {
     return (
@@ -106,15 +139,55 @@ function PresentStory({ story }: { story: Story }) {
   return <div className="story">{elements}</div>;
 }
 
+const PresentStatePreview = ({
+  stories,
+  state,
+  vars,
+}: {
+  stories: readonly Story[];
+  state: GenerationState;
+  vars: ReadonlyMap<string, string>;
+}) => {
+  const story = stories[state.story];
+  return (
+    <div className="story">
+      {story.map((word, i) => {
+        if (state.provide.has(i)) {
+          const child = state.provide.get(i)!;
+          return (
+            <PresentStatePreview
+              key={i}
+              stories={stories}
+              state={child}
+              vars={vars}
+            />
+          );
+        }
+        if (word.kind === "set") {
+          return null;
+        }
+        if (word.kind === "get") {
+          if (vars.has(word.key)) {
+            return <span key={i}>{vars.get(word.key)!}</span>;
+          }
+        }
+        return <PresentWord key={i} word={word} />;
+      })}
+    </div>
+  );
+};
+
 const PresentState = memo(
   ({
     stories,
     state,
     onChange,
+    vars,
   }: {
     stories: readonly Story[];
     state: GenerationState;
     onChange: (newState: GenerationState) => void;
+    vars: ReadonlyMap<string, string>;
   }) => {
     const story = stories[state.story];
 
@@ -130,8 +203,21 @@ const PresentState = memo(
                 style={{ display: "flex", flexDirection: "column", gap: 10 }}
               >
                 <div>
-                  <PresentWord word={word} />
+                  <PresentWord word={word} />{" "}
+                  <button
+                    onClick={() => {
+                      onChange({
+                        ...state,
+                        provide: new Map(
+                          [...state.provide].filter(v => v[0] !== i),
+                        ),
+                      });
+                    }}
+                  >
+                    Clear
+                  </button>
                 </div>
+
                 <PresentState
                   stories={stories}
                   state={state.provide.get(i)!}
@@ -141,6 +227,7 @@ const PresentState = memo(
                       provide: new Map([...state.provide, [i, newChild]]),
                     });
                   }}
+                  vars={vars}
                 />
               </div>
             </div>,
@@ -196,6 +283,13 @@ const PresentState = memo(
 
     return (
       <div className="container">
+        <PresentStatePreview
+          key="preview"
+          stories={stories}
+          state={state}
+          vars={vars}
+        />
+
         <PresentStory story={story} />
         {children}
       </div>
@@ -209,9 +303,16 @@ function App() {
     provide: new Map(),
   });
 
+  const [vars, varsOkay] = collectState(STORIES, state);
+
   return (
     <>
-      <PresentState stories={STORIES} state={state} onChange={setState} />
+      <PresentState
+        stories={STORIES}
+        state={state}
+        onChange={setState}
+        vars={vars}
+      />
     </>
   );
 }
