@@ -28,3 +28,16 @@
   flex-wrap: wrap;
   gap: 5px;
 }
+
+.story-def {
+  font-family: inherit;
+  font-size: inherit;
+  display: flex;
+  min-height: 400px;
+  padding: 10px;
+}
+
+.story-def-container {
+  display: flex;
+  flex-direction: column;
+}

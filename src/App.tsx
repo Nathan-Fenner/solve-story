@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import "./App.css";
 
 type GenerationState = {
@@ -15,6 +15,7 @@ type WordSet = {
   kind: "set";
   key: string;
   value: string;
+  provide: boolean;
 };
 type WordAsk = {
   kind: "ask";
@@ -36,16 +37,22 @@ type Story = Word[];
 function parseStory(text: string): Story {
   const words = text.trim().split(/\s+/);
   return words.map((word): Word => {
-    if (word.startsWith("+")) {
+    if (word.startsWith("+") || word.startsWith("=")) {
       // Set
       if (word.includes(":")) {
         return {
           kind: "set",
           key: word.slice(1, word.indexOf(":")),
           value: word.slice(word.indexOf(":") + 1),
+          provide: word.startsWith("+"),
         };
       } else {
-        return { kind: "set", key: word.slice(1), value: "yes" };
+        return {
+          kind: "set",
+          key: word.slice(1),
+          value: "yes",
+          provide: word.startsWith("+"),
+        };
       }
     }
     if (word.startsWith("?")) {
@@ -73,6 +80,7 @@ const STORIES_TEXT = [
   "+royalty:king",
   "+royalty:princess",
   "+royalty:prince",
+  "+royalty:wizard wizard who time-traveled to find a =hero peasant hero",
 ];
 
 const STORIES = STORIES_TEXT.map(parseStory);
@@ -116,6 +124,7 @@ function PresentWord({ word }: { word: Word }) {
   if (word.kind === "set") {
     return (
       <span className="set">
+        {word.provide ? "+" : ""}
         {word.key}={word.value}
       </span>
     );
@@ -162,6 +171,9 @@ const PresentStatePreview = ({
               vars={vars}
             />
           );
+        }
+        if (word.kind === "ask" && vars.has(word.key)) {
+          return null;
         }
         if (word.kind === "set") {
           return null;
@@ -238,9 +250,17 @@ const PresentState = memo(
         const options: { index: number; story: Story }[] = [];
         for (let j = 0; j < stories.length; j++) {
           const option = stories[j];
-          if (option.find(w => w.kind === "set" && w.key === word.key)) {
+          if (
+            option.find(
+              w => w.kind === "set" && w.provide && w.key === word.key,
+            )
+          ) {
             options.push({ index: j, story: option });
           }
+        }
+
+        if (vars.has(word.key)) {
+          continue;
         }
 
         children.push(
@@ -297,22 +317,48 @@ const PresentState = memo(
   },
 );
 
-function App() {
+function ExploreStories({ stories }: { stories: readonly Story[] }) {
   const [state, setState] = useState<GenerationState>({
     story: 0,
     provide: new Map(),
   });
-
-  const [vars, varsOkay] = collectState(STORIES, state);
+  const [vars, varsOkay] = collectState(stories, state);
 
   return (
     <>
       <PresentState
-        stories={STORIES}
+        stories={stories}
         state={state}
         onChange={setState}
         vars={vars}
       />
+    </>
+  );
+}
+
+function App() {
+  const [sourceText, setSourceText] = useState("");
+
+  const stories = useMemo(() => {
+    return sourceText
+      .split(/\n\s*\n/)
+      .map(stanza => stanza.trim())
+      .filter(stanza => stanza)
+      .map(parseStory);
+  }, [sourceText]);
+
+  return (
+    <>
+      <div className="story-def-container">
+        <textarea
+          className="story-def"
+          value={sourceText}
+          onChange={e => setSourceText(e.target.value)}
+        />
+      </div>
+      {stories.length > 0 && (
+        <ExploreStories key={sourceText} stories={stories} />
+      )}
     </>
   );
 }
