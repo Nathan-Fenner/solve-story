@@ -54,12 +54,13 @@ function* searchForStory(
   yield;
 
   const world = onUpdate(current);
+  const currentStory = stories[current.story];
+
   if (!world) {
     // This branch is doomed.
     return null;
   }
 
-  const currentStory = stories[current.story];
   for (let i = 0; i < currentStory.length; i++) {
     yield;
     if (isStateProvided(stories, world, current, i)) {
@@ -144,7 +145,7 @@ function* searchForStory(
       if (satisfiedChild) {
         const currentWithChild: GenerationState = {
           ...current,
-          provide: new Map([...current.provide, [i, childState] as const]),
+          provide: new Map([...current.provide, [i, satisfiedChild] as const]),
         };
         yield;
         const finishThisOne = yield* searchForStory(
@@ -160,7 +161,6 @@ function* searchForStory(
     // This entry cannot be provided successfully.
     return null;
   }
-
   return current;
 }
 
@@ -548,10 +548,19 @@ function RandomCompleteState({
       }
       requestAnimationFrame(loop);
       if (active) {
-        const message = active.next();
-        if (message.done) {
-          setActive(null);
-          return;
+        const begin = Date.now();
+        while (true) {
+          const message = active.next();
+          if (message.done) {
+            if (message.value) {
+              setState(message.value);
+            }
+            setActive(null);
+            return;
+          }
+          if (Date.now() > begin + 30) {
+            break;
+          }
         }
       }
     }
@@ -614,6 +623,19 @@ function ExploreStories({ stories }: { stories: readonly Story[] }) {
         state={state}
         setState={setState}
       />
+      <details style={{ padding: 5, border: "1px solid #444" }}>
+        <summary>State</summary>
+        <div>
+          {varsOkay}
+          <ul>
+            {[...vars].map(([k, v]) => (
+              <li key={k}>
+                {k}: {v.value} {v.provided ? "+" : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </details>
       <PresentState
         stories={stories}
         state={state}
