@@ -13,6 +13,157 @@ type GenerationState = {
   locals: ReadonlyMap<string, string>;
 };
 
+function isStateProvided(
+  stories: readonly Story[],
+  vars: ReadonlyMap<string, GlobalStateValue>,
+  state: GenerationState,
+  index: number,
+): boolean {
+  const story = stories[state.story];
+  if (!story) {
+    return true;
+  }
+  const word = story[index];
+  if (!word) {
+    return true;
+  }
+  if (word.kind !== "ask") {
+    return true;
+  }
+  const key = word.key
+    .split("_")
+    .map(part => state.locals.get(part) ?? part)
+    .join("_");
+  return vars.has(key) && vars.get(key)!.provided;
+}
+
+function shuffle<T>(items: T[]): void {
+  for (let i = 0; i < items.length; i++) {
+    const j = i + Math.floor(Math.random() * (items.length - i));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+}
+
+function* searchForStory(
+  stories: readonly Story[],
+  current: GenerationState,
+  onUpdate: (
+    state: GenerationState,
+  ) => ReadonlyMap<string, GlobalStateValue> | null,
+): Generator<void, GenerationState | null, void> {
+  yield;
+
+  const world = onUpdate(current);
+  if (!world) {
+    // This branch is doomed.
+    return null;
+  }
+
+  const currentStory = stories[current.story];
+  for (let i = 0; i < currentStory.length; i++) {
+    yield;
+    if (isStateProvided(stories, world, current, i)) {
+      // This word is already provided, or does not need to be provided anything.
+      continue;
+    }
+    const word = currentStory[i];
+    if (word.kind !== "ask") {
+      throw new Error("bug - word is not ask");
+    }
+    // Find a child story to satisfy it. Recurse!
+
+    const wantKey = word.key
+      .split("_")
+      .map(part => current.locals.get(part) ?? part);
+
+    const candidates = [];
+
+    for (
+      let candidateStoryIndex = 0;
+      candidateStoryIndex < stories.length;
+      candidateStoryIndex++
+    ) {
+      yield;
+      const candidateStory = stories[candidateStoryIndex];
+      // Find a provider.
+      candidateWordLoop: for (const candidateProvider of candidateStory) {
+        if (candidateProvider.kind === "set" && candidateProvider.provide) {
+          // Attempt to match this one against the parent.
+
+          const newKey = candidateProvider.key.split("_");
+          if (newKey.length !== wantKey.length) {
+            // The keys do not match.
+            continue candidateWordLoop;
+          }
+          const newLocals = new Map<string, string>();
+          for (let i = 0; i < newKey.length; i++) {
+            if (newKey[i].startsWith("@")) {
+              const newLocal = newKey[i];
+              if (
+                newLocals.has(newLocal) &&
+                newLocals.get(newLocal) !== wantKey[i]
+              ) {
+                continue candidateWordLoop;
+              }
+              newLocals.set(newLocal, wantKey[i]);
+            } else {
+              if (newKey[i] !== wantKey[i]) {
+                continue candidateWordLoop;
+              }
+            }
+          }
+
+          candidates.push({
+            story: candidateStoryIndex,
+            newLocals,
+          });
+        }
+      }
+    }
+
+    shuffle(candidates);
+    for (const candidate of candidates) {
+      yield;
+      const childState: GenerationState = {
+        story: candidate.story,
+        locals: candidate.newLocals,
+        provide: new Map(),
+      };
+
+      const onUpdateChild = (newChild: GenerationState) =>
+        onUpdate({
+          ...current,
+          provide: new Map([...current.provide, [i, newChild] as const]),
+        });
+
+      const satisfiedChild = yield* searchForStory(
+        stories,
+        childState,
+        onUpdateChild,
+      );
+      if (satisfiedChild) {
+        const currentWithChild: GenerationState = {
+          ...current,
+          provide: new Map([...current.provide, [i, childState] as const]),
+        };
+        yield;
+        const finishThisOne = yield* searchForStory(
+          stories,
+          currentWithChild,
+          onUpdate,
+        );
+        if (finishThisOne) {
+          return finishThisOne;
+        }
+      }
+    }
+    // This entry cannot be provided successfully.
+    return null;
+  }
+
+  return current;
+}
+
 type WordSet = {
   kind: "set";
   key: string;
@@ -73,10 +224,12 @@ function parseStory(text: string): Story {
   });
 }
 
+type GlobalStateValue = { value: string; provided: boolean };
+
 function collectStateInto(
   stories: readonly Story[],
   state: GenerationState,
-  target: Map<string, string>,
+  target: Map<string, GlobalStateValue>,
 ): boolean {
   let ok = true;
   const story = stories[state.story];
@@ -103,10 +256,14 @@ function collectStateInto(
         })
         .join("_");
 
-      if (target.has(key) && target.get(key) !== value) {
+      if (!target.has(key)) {
+        target.set(key, { value, provided: false });
+      }
+      if (target.get(key)!.value !== value) {
         ok = false;
-      } else {
-        target.set(key, value);
+      }
+      if (word.provide) {
+        target.get(key)!.provided = true;
       }
     }
   }
@@ -122,8 +279,8 @@ function collectStateInto(
 function collectState(
   stories: readonly Story[],
   state: GenerationState,
-): [Map<string, string>, "okay" | "inconsistent"] {
-  const target = new Map<string, string>();
+): [Map<string, GlobalStateValue>, "okay" | "inconsistent"] {
+  const target = new Map<string, GlobalStateValue>();
   const ok = collectStateInto(stories, state, target);
   return [target, ok ? "okay" : "inconsistent"];
 }
@@ -163,7 +320,7 @@ const PresentStatePreview = ({
 }: {
   stories: readonly Story[];
   state: GenerationState;
-  vars: ReadonlyMap<string, string>;
+  vars: ReadonlyMap<string, GlobalStateValue>;
 }) => {
   const story = stories[state.story];
   return (
@@ -180,7 +337,11 @@ const PresentStatePreview = ({
             />
           );
         }
-        if (word.kind === "ask" && vars.has(word.key)) {
+        if (
+          word.kind === "ask" &&
+          vars.has(word.key) &&
+          vars.get(word.key)?.provided
+        ) {
           return null;
         }
         if (word.kind === "set") {
@@ -188,7 +349,7 @@ const PresentStatePreview = ({
         }
         if (word.kind === "get") {
           if (vars.has(word.key)) {
-            return <span key={i}>{vars.get(word.key)!}</span>;
+            return <span key={i}>{vars.get(word.key)!.value}</span>;
           }
         }
         if (word.kind === "say" && state.locals.has(word.text)) {
@@ -210,7 +371,7 @@ const PresentState = memo(
     stories: readonly Story[];
     state: GenerationState;
     onChange: (newState: GenerationState) => void;
-    vars: ReadonlyMap<string, string>;
+    vars: ReadonlyMap<string, GlobalStateValue>;
   }) => {
     const story = stories[state.story];
 
@@ -304,7 +465,7 @@ const PresentState = memo(
           }
         }
 
-        if (vars.has(word.key)) {
+        if (isStateProvided(stories, vars, state, i)) {
           continue;
         }
 
@@ -364,6 +525,80 @@ const PresentState = memo(
   },
 );
 
+function RandomCompleteState({
+  stories,
+  state,
+  setState,
+}: {
+  stories: readonly Story[];
+  state: GenerationState;
+  setState: (newState: GenerationState) => void;
+}) {
+  const [active, setActive] = useState<Generator<
+    void,
+    GenerationState | null,
+    void
+  > | null>(null);
+
+  useEffect(() => {
+    let running = true;
+    function loop() {
+      if (!running) {
+        return;
+      }
+      requestAnimationFrame(loop);
+      if (active) {
+        const message = active.next();
+        if (message.done) {
+          setActive(null);
+          return;
+        }
+      }
+    }
+    loop();
+    return () => {
+      running = false;
+    };
+  });
+
+  if (active) {
+    return <button onClick={() => setActive(null)}>Stop</button>;
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => {
+          const onUpdate = (
+            state: GenerationState,
+          ): ReadonlyMap<string, GlobalStateValue> | null => {
+            setState(state);
+            const [vars, okay] = collectState(stories, state);
+            if (okay === "inconsistent") {
+              return null;
+            }
+            return vars;
+          };
+          setActive(searchForStory(stories, state, onUpdate));
+        }}
+      >
+        Search
+      </button>
+      <button
+        onClick={() => {
+          setState({
+            story: 0,
+            provide: new Map(),
+            locals: new Map(),
+          });
+        }}
+      >
+        Clear
+      </button>
+    </>
+  );
+}
+
 function ExploreStories({ stories }: { stories: readonly Story[] }) {
   const [state, setState] = useState<GenerationState>({
     story: 0,
@@ -374,6 +609,11 @@ function ExploreStories({ stories }: { stories: readonly Story[] }) {
 
   return (
     <>
+      <RandomCompleteState
+        stories={stories}
+        state={state}
+        setState={setState}
+      />
       <PresentState
         stories={stories}
         state={state}

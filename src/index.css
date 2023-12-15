@@ -1,0 +1,4 @@
+:root {
+  background-color: white;
+  filter: invert(90%) hue-rotate(180deg);
+}
