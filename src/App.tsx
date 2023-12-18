@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import "./App.css";
+import { unifyKeys } from "./unify";
 
 type GenerationState = {
   story: number; // the index of the story source
@@ -77,7 +78,11 @@ function* searchForStory(
       .split("_")
       .map(part => current.locals.get(part) ?? part);
 
-    const candidates = [];
+    type Candidate = {
+      story: number;
+      newLocals: ReadonlyMap<string, string>;
+    };
+    let candidates: Candidate[] = [];
 
     for (
       let candidateStoryIndex = 0;
@@ -121,6 +126,70 @@ function* searchForStory(
         }
       }
     }
+
+    // If any candidate includes 'search' entries, it must be processed separately.
+    const searchedCandidates: Candidate[] = [];
+    function* completeCandidate(
+      candidate: Candidate,
+      index: number,
+    ): Generator<void, Candidate[], void> {
+      yield;
+      const story = stories[candidate.story];
+      if (index >= story.length) {
+        return [candidate];
+      }
+      if (world === null) {
+        throw new Error("no");
+      }
+      const word = story[index];
+      if (word.kind === "search") {
+        // Process this search!
+        // TODO: Make a fast path
+        const combined: Candidate[] = [];
+        for (const [worldKey, worldValue] of world) {
+          yield;
+          if (!worldValue.provided) {
+            continue; // Must be provided.
+          }
+          const updatedStateKey = unifyKeys(
+            worldKey,
+            word.key,
+            candidate.newLocals,
+          );
+          if (updatedStateKey === null) {
+            // This world key is incompatible with this search command.
+            continue;
+          }
+
+          const updatedStateValue = unifyKeys(
+            worldValue.value,
+            word.value,
+            updatedStateKey,
+          );
+          if (updatedStateValue === null) {
+            // The world value is incompatible.
+            continue;
+          }
+
+          combined.push(
+            ...(yield* completeCandidate(
+              {
+                story: candidate.story,
+                newLocals: updatedStateValue,
+              },
+              index + 1,
+            )),
+          );
+        }
+        return combined;
+      } else {
+        return yield* completeCandidate(candidate, index + 1);
+      }
+    }
+    for (const candidate of candidates) {
+      searchedCandidates.push(...(yield* completeCandidate(candidate, 0)));
+    }
+    candidates = searchedCandidates;
 
     shuffle(candidates);
     for (const candidate of candidates) {
@@ -182,8 +251,13 @@ type WordSay = {
   kind: "say";
   text: string;
 };
+type WordSearch = {
+  kind: "search";
+  key: string;
+  value: string;
+};
 
-type Word = WordSet | WordAsk | WordGet | WordSay;
+type Word = WordSet | WordAsk | WordGet | WordSay | WordSearch;
 
 type Story = Word[];
 
@@ -218,6 +292,20 @@ function parseStory(text: string): Story {
       return {
         kind: "get",
         key: word.slice(1),
+      };
+    }
+    if (word.startsWith("&")) {
+      if (word.includes(":")) {
+        return {
+          kind: "search",
+          key: word.slice(1, word.indexOf(":")),
+          value: word.slice(word.indexOf(":") + 1),
+        };
+      }
+      return {
+        kind: "search",
+        key: word.slice(1),
+        value: "*",
       };
     }
     return { kind: "say", text: word };
@@ -299,6 +387,12 @@ function PresentWord({ word }: { word: Word }) {
     return <span>{word.text}</span>;
   } else if (word.kind === "get") {
     return <span className="get">[{word.key}]</span>;
+  } else if (word.kind === "search") {
+    return (
+      <span className="search">
+        {word.key}:{word.value}
+      </span>
+    );
   }
   throw new Error("unknown word type");
 }
@@ -344,12 +438,16 @@ const PresentStatePreview = ({
         ) {
           return null;
         }
-        if (word.kind === "set") {
+        if (word.kind === "set" || word.kind === "search") {
           return null;
         }
         if (word.kind === "get") {
-          if (vars.has(word.key)) {
-            return <span key={i}>{vars.get(word.key)!.value}</span>;
+          const key = word.key
+            .split("_")
+            .map(part => state.locals.get(part) ?? part)
+            .join("_");
+          if (vars.has(key)) {
+            return <span key={i}>{vars.get(key)!.value}</span>;
           }
         }
         if (word.kind === "say" && state.locals.has(word.text)) {
@@ -389,6 +487,7 @@ const PresentState = memo(
                 <div>
                   <PresentWord word={word} />{" "}
                   <button
+                    style={{ fontSize: "200%" }}
                     onClick={() => {
                       onChange({
                         ...state,
@@ -480,6 +579,7 @@ const PresentState = memo(
               {options.map(option => (
                 <div key={option.index} style={{ display: "flex" }}>
                   <button
+                    style={{ fontSize: "200%" }}
                     onClick={() => {
                       onChange({
                         ...state,
@@ -516,8 +616,8 @@ const PresentState = memo(
           state={state}
           vars={vars}
         />
-
         {JSON.stringify([...state.locals])}
+
         <PresentStory story={story} />
         {children}
       </div>
@@ -571,12 +671,17 @@ function RandomCompleteState({
   });
 
   if (active) {
-    return <button onClick={() => setActive(null)}>Stop</button>;
+    return (
+      <button style={{ fontSize: "200%" }} onClick={() => setActive(null)}>
+        Stop
+      </button>
+    );
   }
 
   return (
     <>
       <button
+        style={{ fontSize: "200%" }}
         onClick={() => {
           const onUpdate = (
             state: GenerationState,
@@ -594,6 +699,7 @@ function RandomCompleteState({
         Search
       </button>
       <button
+        style={{ fontSize: "200%" }}
         onClick={() => {
           setState({
             story: 0,
