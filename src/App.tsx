@@ -142,6 +142,26 @@ function* searchForStory(
         throw new Error("no");
       }
       const word = story[index];
+      if (word.kind === "forbid") {
+        const key = word.key
+          .split("_")
+          .map(k => candidate.newLocals.get(k) ?? k)
+          .join("_");
+        const value = word.value
+          .split("_")
+          .map(k => candidate.newLocals.get(k) ?? k)
+          .join("_");
+
+        if (value === "*") {
+          if (world.has(key) && world.get(key)!.value !== "no") {
+            return [];
+          }
+        } else if (value === "no") {
+          // ... unclear what to do here
+        } else if (world.has(key) && world.get(key)?.value === value) {
+          return [];
+        }
+      }
       if (word.kind === "search") {
         // Process this search!
         // TODO: Make a fast path
@@ -192,6 +212,21 @@ function* searchForStory(
     candidates = searchedCandidates;
 
     shuffle(candidates);
+    candidates.sort((a, b) => {
+      let pa = 0;
+      let pb = 0;
+
+      const sa = stories[a.story];
+      const sb = stories[b.story];
+      if (sa.find(q => q.kind === "say" && q.text === "*low")) {
+        pa = -10;
+      }
+      if (sb.find(q => q.kind === "say" && q.text === "*low")) {
+        pb = -10;
+      }
+
+      return pb - pa;
+    });
     for (const candidate of candidates) {
       yield;
       const childState: GenerationState = {
@@ -256,8 +291,13 @@ type WordSearch = {
   key: string;
   value: string;
 };
+type WordForbid = {
+  kind: "forbid";
+  key: string;
+  value: string;
+};
 
-type Word = WordSet | WordAsk | WordGet | WordSay | WordSearch;
+type Word = WordSet | WordAsk | WordGet | WordSay | WordSearch | WordForbid;
 
 type Story = Word[];
 
@@ -307,6 +347,21 @@ function parseStory(text: string): Story {
         key: word.slice(1),
         value: "*",
       };
+    }
+    if (word.startsWith("!")) {
+      if (word.includes(":")) {
+        return {
+          kind: "forbid",
+          key: word.slice(1, word.indexOf(":")),
+          value: word.slice(word.indexOf(":") + 1),
+        };
+      } else {
+        return {
+          kind: "forbid",
+          key: word.slice(1),
+          value: "*",
+        };
+      }
     }
     return { kind: "say", text: word };
   });
@@ -393,6 +448,12 @@ function PresentWord({ word }: { word: Word }) {
         {word.key}:{word.value}
       </span>
     );
+  } else if (word.kind === "forbid") {
+    return (
+      <span className="search">
+        !{word.key}:{word.value}
+      </span>
+    );
   }
   throw new Error("unknown word type");
 }
@@ -438,7 +499,12 @@ const PresentStatePreview = ({
         ) {
           return null;
         }
-        if (word.kind === "set" || word.kind === "search") {
+        if (
+          word.kind === "set" ||
+          word.kind === "search" ||
+          word.kind === "forbid" ||
+          (word.kind === "say" && word.text.startsWith("*"))
+        ) {
           return null;
         }
         if (word.kind === "get") {
