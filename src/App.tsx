@@ -484,6 +484,28 @@ const PresentStatePreview = ({
       if (state.provide.has(index)) {
         return flattenWords(state.provide.get(index)!);
       }
+
+      if (word.kind === "say" && state.locals.has(word.text)) {
+        return [
+          {
+            kind: "say",
+            text: state.locals.get(word.text)!,
+          },
+        ];
+      }
+
+      if (word.kind === "get") {
+        return [
+          {
+            kind: "get",
+            key: word.key
+              .split("_")
+              .map(part => state.locals.get(part) ?? part)
+              .join("_"),
+          },
+        ];
+      }
+
       return [word];
     });
   };
