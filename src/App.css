@@ -1,26 +1,38 @@
 .ask {
   background-color: #fad;
-  padding: 3px;
-  margin: -3px 0;
-  border-radius: 3px;
+  padding: 2px;
+  border-radius: 2px;
+  font-family: Consolas, monospace;
+  outline: 1px solid rgba(128, 128, 128, 0.5);
 }
+
 .get {
   background-color: #acf;
   padding: 3px;
-  margin: -3px 0;
-  border-radius: 3px;
+  border-radius: 2px;
+  font-family: Consolas, monospace;
+  outline: 1px solid rgba(128, 128, 128, 0.5);
 }
+
 .set {
   background-color: #afc;
-  padding: 3px;
-  margin: -3px 0;
+  padding: 2px;
   border-radius: 3px;
+  font-family: Consolas, monospace;
+  outline: 1px solid rgba(128, 128, 128, 0.5);
+}
+
+.search {
+  background-color: #eee;
+  padding: 2px;
+  font-family: Consolas, monospace;
+  border-radius: 2px;
+  outline: 1px solid rgba(128, 128, 128, 0.5);
 }
 
 .container {
   border: 1px solid #aaa;
   padding: 10px;
-  margin: 5px;
 }
 
 .story {
@@ -40,4 +52,12 @@
 .story-def-container {
   display: flex;
   flex-direction: column;
+}
+
+.locals {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(128, 128, 128, 0.5);
+  padding: 5px;
+  gap: 5px;
 }

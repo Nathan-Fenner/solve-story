@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import "./App.css";
 import { unifyKeys } from "./unify";
+import { useLocalStorage } from "./useLocalStorage";
 
 type GenerationState = {
   story: number; // the index of the story source
@@ -437,7 +438,7 @@ function PresentWord({ word }: { word: Word }) {
       </span>
     );
   } else if (word.kind === "ask") {
-    return <span className="ask">{word.key} = ???</span>;
+    return <span className="ask">?{word.key}</span>;
   } else if (word.kind === "say") {
     return <span>{word.text}</span>;
   } else if (word.kind === "get") {
@@ -445,7 +446,7 @@ function PresentWord({ word }: { word: Word }) {
   } else if (word.kind === "search") {
     return (
       <span className="search">
-        {word.key}:{word.value}
+        &{word.key}:{word.value}
       </span>
     );
   } else if (word.kind === "forbid") {
@@ -477,21 +478,21 @@ const PresentStatePreview = ({
   state: GenerationState;
   vars: ReadonlyMap<string, GlobalStateValue>;
 }) => {
-  const story = stories[state.story];
+  const flattenWords = (state: GenerationState): Word[] => {
+    const story = stories[state.story];
+    return story.flatMap((word, index) => {
+      if (state.provide.has(index)) {
+        return flattenWords(state.provide.get(index)!);
+      }
+      return [word];
+    });
+  };
+
+  const words = flattenWords(state);
+
   return (
     <div className="story">
-      {story.map((word, i) => {
-        if (state.provide.has(i)) {
-          const child = state.provide.get(i)!;
-          return (
-            <PresentStatePreview
-              key={i}
-              stories={stories}
-              state={child}
-              vars={vars}
-            />
-          );
-        }
+      {words.map((word, i) => {
         if (
           word.kind === "ask" &&
           vars.has(word.key) &&
@@ -524,6 +525,24 @@ const PresentStatePreview = ({
     </div>
   );
 };
+
+const PresentLocals = memo(
+  ({ locals }: { locals: ReadonlyMap<string, string> }) => {
+    if (locals.size === 0) {
+      return null;
+    }
+
+    return (
+      <div className="locals">
+        {[...locals].map(([key, value]) => (
+          <div key={key}>
+            <code>{key}</code>: <code>{value}</code>
+          </div>
+        ))}
+      </div>
+    );
+  },
+);
 
 const PresentState = memo(
   ({
@@ -682,7 +701,7 @@ const PresentState = memo(
           state={state}
           vars={vars}
         />
-        {JSON.stringify([...state.locals])}
+        <PresentLocals locals={state.locals} />
 
         <PresentStory story={story} />
         {children}
@@ -745,7 +764,7 @@ function RandomCompleteState({
   }
 
   return (
-    <>
+    <div className="button-row">
       <button
         style={{ fontSize: "200%" }}
         onClick={() => {
@@ -776,7 +795,7 @@ function RandomCompleteState({
       >
         Clear
       </button>
-    </>
+    </div>
   );
 }
 
@@ -795,8 +814,10 @@ function ExploreStories({ stories }: { stories: readonly Story[] }) {
         state={state}
         setState={setState}
       />
-      <details style={{ padding: 5, border: "1px solid #444" }}>
-        <summary>State</summary>
+      <details>
+        <summary>
+          State <code>{varsOkay}</code>
+        </summary>
         <div>
           {varsOkay}
           <ul>
@@ -816,22 +837,6 @@ function ExploreStories({ stories }: { stories: readonly Story[] }) {
       />
     </>
   );
-}
-
-function useLocalStorage(
-  key: string,
-  initial: string,
-): [string, (newValue: string) => void] {
-  const [state, setState] = useState(localStorage.getItem(key) ?? initial);
-
-  useEffect(() => {
-    if (localStorage.getItem(key) === null && state === initial) {
-      return;
-    }
-    localStorage.setItem(key, state);
-  }, [state, key]);
-
-  return [state, setState];
 }
 
 function ChooseStorage() {
