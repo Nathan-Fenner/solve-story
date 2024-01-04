@@ -214,17 +214,15 @@ function* searchForStory(
 
     shuffle(candidates);
     candidates.sort((a, b) => {
-      let pa = 0;
-      let pb = 0;
-
       const sa = stories[a.story];
       const sb = stories[b.story];
-      if (sa.find(q => q.kind === "say" && q.text === "*low")) {
-        pa = -10;
-      }
-      if (sb.find(q => q.kind === "say" && q.text === "*low")) {
-        pb = -10;
-      }
+
+      const pa =
+        -10 * sa.filter(q => q.kind === "say" && q.text === "*low").length +
+        10 * sa.filter(q => q.kind === "say" && q.text === "*high").length;
+      const pb =
+        -10 * sb.filter(q => q.kind === "say" && q.text === "*low").length +
+        10 * sb.filter(q => q.kind === "say" && q.text === "*high").length;
 
       return pb - pa;
     });
@@ -407,6 +405,10 @@ function collectStateInto(
         ok = false;
       }
       if (word.provide) {
+        if (target.get(key)!.provided) {
+          // Cannot provide the same thing twice.
+          ok = false;
+        }
         target.get(key)!.provided = true;
       }
     }
