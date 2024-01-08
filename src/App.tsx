@@ -848,6 +848,8 @@ function ExploreStories({ stories }: { stories: readonly Story[] }) {
   });
   const [vars, varsOkay] = collectState(stories, state);
 
+  const [showDetail, setShowDetail] = useState(false);
+
   return (
     <>
       <RandomCompleteState
@@ -870,12 +872,19 @@ function ExploreStories({ stories }: { stories: readonly Story[] }) {
           </ul>
         </div>
       </details>
-      <PresentState
-        stories={stories}
-        state={state}
-        onChange={setState}
-        vars={vars}
-      />
+
+      <button onClick={() => setShowDetail(!showDetail)}>Detail</button>
+      {showDetail && (
+        <PresentState
+          stories={stories}
+          state={state}
+          onChange={setState}
+          vars={vars}
+        />
+      )}
+      {!showDetail && (
+        <PresentStatePreview stories={stories} state={state} vars={vars} />
+      )}
     </>
   );
 }
