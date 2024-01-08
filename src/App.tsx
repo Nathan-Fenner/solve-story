@@ -104,6 +104,7 @@ function* searchForStory(
           }
           const newLocals = new Map<string, string>();
           for (let i = 0; i < newKey.length; i++) {
+            yield;
             if (newKey[i].startsWith("@")) {
               const newLocal = newKey[i];
               if (
@@ -207,7 +208,9 @@ function* searchForStory(
         return yield* completeCandidate(candidate, index + 1);
       }
     }
+    yield;
     for (const candidate of candidates) {
+      yield;
       searchedCandidates.push(...(yield* completeCandidate(candidate, 0)));
     }
     candidates = searchedCandidates;
@@ -261,6 +264,7 @@ function* searchForStory(
         }
       }
     }
+    yield;
     // This entry cannot be provided successfully.
     return null;
   }
@@ -899,11 +903,29 @@ function ChooseStorage() {
   );
 }
 
+function useDebounce<T>(x: T, { settleMs }: { settleMs: number }): T {
+  const [current, setCurrent] = useState(x);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setCurrent(x);
+    }, settleMs);
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [x, settleMs]);
+
+  return current;
+}
+
 function App({ storageKey }: { storageKey: string }) {
-  const [sourceText, setSourceText] = useLocalStorage(
+  const [actualSourceText, setSourceText] = useLocalStorage(
     "story_rules_" + storageKey,
     ["root ?char_A", "Greetings from +char_@c I am @c"].join("\n\n"),
+    { delayMs: 2000 },
   );
+
+  const sourceText = useDebounce(actualSourceText, { settleMs: 1500 });
 
   const stories = useMemo(() => {
     return sourceText
@@ -918,7 +940,7 @@ function App({ storageKey }: { storageKey: string }) {
       <div className="story-def-container">
         <textarea
           className="story-def"
-          value={sourceText}
+          value={actualSourceText}
           onChange={e => setSourceText(e.target.value)}
         />
       </div>
