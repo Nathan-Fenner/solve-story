@@ -434,31 +434,45 @@ function collectState(
 function PresentWord({ word }: { word: Word }) {
   if (word.kind === "set") {
     return (
-      <span className="set">
-        {word.provide ? "+" : ""}
-        {word.key}={word.value}
-      </span>
+      <>
+        <span className="set">
+          {word.provide ? "+" : ""}
+          {word.key}={word.value}
+        </span>{" "}
+      </>
     );
   } else if (word.kind === "ask") {
-    return <span className="ask">?{word.key}</span>;
+    return (
+      <>
+        <span className="ask">?{word.key}</span>{" "}
+      </>
+    );
   } else if (word.kind === "say") {
     if (word.text === "br") {
       return <br />;
     }
-    return <span>{word.text}</span>;
+    return <span>{word.text} </span>;
   } else if (word.kind === "get") {
-    return <span className="get">[{word.key}]</span>;
+    return (
+      <>
+        <span className="get">[{word.key}]</span>{" "}
+      </>
+    );
   } else if (word.kind === "search") {
     return (
-      <span className="search">
-        &{word.key}:{word.value}
-      </span>
+      <>
+        <span className="search">
+          &{word.key}:{word.value}
+        </span>{" "}
+      </>
     );
   } else if (word.kind === "forbid") {
     return (
-      <span className="search">
-        !{word.key}:{word.value}
-      </span>
+      <>
+        <span className="search">
+          !{word.key}:{word.value}
+        </span>{" "}
+      </>
     );
   }
   throw new Error("unknown word type");

@@ -36,15 +36,11 @@
 }
 
 .story {
-  flex-wrap: wrap;
-  gap: 5px;
   white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
-.story>* {
-  margin: 4px;
-  line-height: 28px;
-}
+
 
 .story-def {
   font-family: inherit;
