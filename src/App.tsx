@@ -442,6 +442,9 @@ function PresentWord({ word }: { word: Word }) {
   } else if (word.kind === "ask") {
     return <span className="ask">?{word.key}</span>;
   } else if (word.kind === "say") {
+    if (word.text === "br") {
+      return <br />;
+    }
     return <span>{word.text}</span>;
   } else if (word.kind === "get") {
     return <span className="get">[{word.key}]</span>;

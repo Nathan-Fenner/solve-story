@@ -36,9 +36,14 @@
 }
 
 .story {
-  display: flex;
   flex-wrap: wrap;
   gap: 5px;
+  white-space: pre-wrap;
+}
+
+.story>* {
+  margin: 4px;
+  line-height: 28px;
 }
 
 .story-def {
