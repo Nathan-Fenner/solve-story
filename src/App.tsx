@@ -559,7 +559,7 @@ const PresentStatePreview = ({
             .map(part => state.locals.get(part) ?? part)
             .join("_");
           if (vars.has(key)) {
-            return <span key={i}>{vars.get(key)!.value}</span>;
+            return <span key={i}>{vars.get(key)!.value} </span>;
           }
         }
         if (word.kind === "say" && state.locals.has(word.text)) {
